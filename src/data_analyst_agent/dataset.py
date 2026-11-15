@@ -11,7 +11,7 @@ class DatasetManager():
 
     def __init__(self) -> None:
         self._df: Optional[pd.DataFrame] = None
-        self._file_path: Optional[pd.DataFrame] = None
+        self._file_path: Optional[Path] = None
 
     def load_dataset(self, file_path: str) -> pd.DataFrame:
         """Load or viladate CSV or Excel dataset.

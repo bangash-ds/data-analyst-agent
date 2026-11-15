@@ -35,7 +35,7 @@ def build_agent(dataset_manager) -> Any:
     agent = create_agent(
         model=llm,
         tools=tools,
-        prompt=SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT,
     )
 
     logger.info("Agent built successfully")
