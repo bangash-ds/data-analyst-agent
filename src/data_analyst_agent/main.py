@@ -1,40 +1,24 @@
-# 10. Main Application
-# Now we will connect all the components.
-
-# This file will:
-# 1. Ask the user for a dataset path.
-# 2. Load the dataset.
-# 3. Initialize the LangChain agent.
-# 4. Accept questions from the user.
-# 5. Execute the appropriate analytical tools.
-# 6. Display the final answer.
-
-
 import logging
 import sys
-from pathlib import Path
 
-from .dataset import DatasetManager
-from .agent import build_agent
+from .service import AnalystService
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> None:
     """Entry point for the AI Data Analyst Agent CLI."""
-
     print("\n====================================")
     print("       AI DATA ANALYST AGENT")
     print("====================================\n")
 
-    # Step 1: Initialize dataset manager
-    logger.info("Initializing DatasetManager")
-    dataset_manager = DatasetManager()
+    service = AnalystService()
 
-    # Step 2: Ask for dataset path with validation
+    # Step 1: Get dataset path from user (interface-only validation)
     while True:
         raw_input = input("Enter your dataset path (or 'exit' to quit): ").strip()
         dataset_path = raw_input.strip('\"\'()[]{}').strip()
+
         if dataset_path.lower() in ("exit", "quit"):
             print("\nGoodbye!")
             return
@@ -43,38 +27,24 @@ def main() -> None:
             print("Error: Path cannot be empty. Please try again.")
             continue
 
-        resolved_path = Path(dataset_path).resolve()
-        if not resolved_path.exists():
-            print(f"Error: File not found at '{resolved_path}'. Please try again.")
-            continue
+        # Delegate actual file validation to service layer
+        load_result = service.load_dataset(dataset_path)
+        if load_result["status"] == "loaded":
+            print(f"\n Dataset loaded successfully: {load_result['rows']} rows\n")
+            break
+        else:
+            print(f"\n {load_result['error']}\n")
 
-        break
-
-    # Step 3: Load dataset
-    logger.info("Loading dataset from: %s", resolved_path)
-    try:
-        dataset_manager.load_dataset(str(resolved_path))
-        logger.info("Dataset loaded successfully: %d rows", len(dataset_manager.get_dataframe()))
-    except Exception as error:
-        logger.error("Dataset loading failed: %s", error)
-        print(f"\nDataset loading failed: {error}")
+    # Step 2: Initialize agent via service
+    init_result = service.initialize_agent()
+    if init_result["status"] != "ready":
+        print(f"\n {init_result['error']}")
         return
 
-    # Step 4: Build the agent
-    logger.info("Building AI Data Analyst Agent...")
-    try:
-        agent = build_agent(dataset_manager)
-        logger.info("Agent initialized successfully")
-        print("\n Agent initialized successfully!\n")
-    except Exception as error:
-        logger.error("Agent initialization failed: %s", error)
-        print(f"\n Agent initialization failed: {error}")
-        return
-
-    # Step 5: Interactive conversation loop
     print("You can now ask questions about your dataset.")
     print("Type 'exit' or 'quit' to stop.\n")
 
+    # Step 3: Interactive conversation loop (interface-only)
     while True:
         try:
             user_query = input("You: ").strip()
@@ -89,25 +59,16 @@ def main() -> None:
         if not user_query:
             continue
 
-        logger.info("User query: %s", user_query[:100])
-
         try:
-            response = agent.invoke(
-                {"messages": [{"role": "user", "content": user_query}]}
-            )
-
-            final_message = response["messages"][-1]
-            content = final_message.content if hasattr(final_message, "content") else str(final_message)
-
+            answer_result = service.ask(user_query)
             print("\n========== AGENT RESPONSE ==========\n")
-            print(content)
+            print(answer_result["answer"])
             print("\n====================================\n")
 
         except KeyboardInterrupt:
             print("\n\n Interrupted. Goodbye!")
             return
         except Exception as error:
-            logger.error("Agent execution failed: %s", error)
             print(f"\n Agent execution failed: {error}\n")
 
 
