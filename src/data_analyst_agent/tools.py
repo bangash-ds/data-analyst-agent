@@ -2,6 +2,7 @@ import json
 import logging
 import re
 from typing import List
+from pathlib import Path
 
 import pandas as pd
 import numpy as np
@@ -19,11 +20,13 @@ from .schemas import (
     GroupAnalysisRequest,
     ChartRequest,
     ReportRequest,
+    CleaningRequest  
 )
 
 from .config import (
     CHART_DIR,
     REPORT_DIR,
+    DATA_DIR  
 )
 
 logger = logging.getLogger(__name__)
@@ -415,6 +418,95 @@ def create_tools(dataset_manager) -> List:
             f"Report saved successfully at: {report_path}"
         )
 
+    @tool(args_schema=CleaningRequest)
+    def clean_dataset(strategy: str, columns: list[str] = None) -> str:
+        """Clean missing values using an approved strategy.
+
+        Strategies:
+        - drop_missing_rows: Remove rows with any missing value in target columns
+        - fill_numeric_mean: Fill numeric columns with their mean
+        - fill_numeric_median: Fill numeric columns with their median  
+        - fill_categorical_mode: Fill categorical columns with most frequent value
+
+        Saves cleaned CSV to data/ directory without modifying original dataset.
+        Returns path to cleaned file and summary statistics.
+        """
+        if columns is None:
+            columns = []
+
+        logger.info("Executing tool: clean_dataset | strategy=%s | columns=%s", strategy, columns)
+
+        try:
+            df = dataset_manager.get_dataframe().copy()
+        except ValueError as error:
+            logger.warning("clean_dataset failed: %s", error)
+            return f"Error: {error}"
+
+        available_columns = df.columns.tolist()
+
+        # Validate requested columns
+        invalid_columns = [col for col in columns if col not in available_columns]
+        if invalid_columns:
+            return f"Invalid columns: {invalid_columns}. Available: {available_columns}"
+
+        # Auto-select applicable columns if none specified
+        if not columns:
+            if strategy == "drop_missing_rows":
+                columns = available_columns
+            elif strategy in ("fill_numeric_mean", "fill_numeric_median"):
+                columns = df.select_dtypes(include=np.number).columns.tolist()
+            elif strategy == "fill_categorical_mode":
+                columns = df.select_dtypes(exclude=np.number).columns.tolist()
+
+        if not columns:
+            return f"No applicable columns found for strategy '{strategy}'."
+
+        # Track missing counts before cleaning
+        missing_before = int(df[columns].isnull().sum().sum())
+
+        # Apply cleaning strategy
+        if strategy == "drop_missing_rows":
+            df = df.dropna(subset=columns)
+        elif strategy == "fill_numeric_mean":
+            for col in columns:
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    df[col] = df[col].fillna(df[col].mean())
+        elif strategy == "fill_numeric_median":
+            for col in columns:
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    df[col] = df[col].fillna(df[col].median())
+        elif strategy == "fill_categorical_mode":
+            for col in columns:
+                if not pd.api.types.is_numeric_dtype(df[col]):
+                    mode_val = df[col].mode()
+                    if len(mode_val) > 0:
+                        df[col] = df[col].fillna(mode_val[0])
+
+        missing_after = int(df[columns].isnull().sum().sum())
+
+        # Save cleaned dataset
+        timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+        safe_name = Path(dataset_manager.file_path).stem if hasattr(dataset_manager, 'file_path') else "dataset"
+        output_path = DATA_DIR / f"{safe_name}_cleaned_{timestamp}.csv"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(output_path, index=False)
+
+        logger.info(
+            "Dataset cleaned: %d → %d missing values | Saved to %s",
+            missing_before, missing_after, output_path
+        )
+
+        result = {
+            "strategy": strategy,
+            "columns_cleaned": columns,
+            "missing_values_before": missing_before,
+            "missing_values_after": missing_after,
+            "rows_removed": int(len(dataset_manager.get_dataframe()) - len(df)),
+            "cleaned_file_path": str(output_path),
+        }
+
+        return json.dumps(result, default=str)
+
 
     # Return all tools
 
@@ -427,4 +519,5 @@ def create_tools(dataset_manager) -> List:
         group_analysis,
         visualize_data,
         save_report,
+        clean_dataset,  
     ]

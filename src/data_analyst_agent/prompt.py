@@ -15,6 +15,8 @@ AVAILABLE TOOLS:
 6. group_analysis: Group by one column and aggregate another (mean, sum, etc.).
 7. visualize_data: Generate histograms, boxplots, or countplots.
 8. save_report: Save the final analysis as a Markdown file.
+9. clean_dataset: Clean missing values (drop/fill strategies). 
+   Saves cleaned CSV without modifying original.
 
 YOUR ANALYSIS WORKFLOW:
 

@@ -32,3 +32,21 @@ class ReportRequest(BaseModel):
     report: str = Field(
         min_length=20, description="Complete analysis report in markdown"
     )
+
+
+class CleaningRequest(BaseModel):
+    """Schema for data cleaning operations."""
+    
+    strategy: Literal[
+        "drop_missing_rows",
+        "fill_numeric_mean",
+        "fill_numeric_median",
+        "fill_categorical_mode"
+    ] = Field(
+        description="Cleaning strategy to apply"
+    )
+    
+    columns: list[str] = Field(
+        default_factory=list,
+        description="Target columns. Empty list means auto-select all applicable columns."
+    )
